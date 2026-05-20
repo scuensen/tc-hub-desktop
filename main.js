@@ -197,6 +197,8 @@ function sendUpdateStatus(status) {
   mainWindow?.webContents.send('update-status', status);
 }
 
+ipcMain.on('get-version-sync', (event) => { event.returnValue = app.getVersion(); });
+
 ipcMain.handle('check-update', () => {
   manualUpdateCheck = true;
   if (app.isPackaged) {
