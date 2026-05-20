@@ -3,6 +3,8 @@ const { autoUpdater } = require('electron-updater');
 const path = require('path');
 
 const APP_URL = 'https://tc-hub-kanzlei.vercel.app';
+const RELEASES_URL = 'https://github.com/scuensen/tc-hub-desktop/releases/latest';
+const isMac = process.platform === 'darwin';
 
 let mainWindow;
 let manualUpdateCheck = false;
@@ -190,8 +192,8 @@ app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') app.quit();
 });
 
-autoUpdater.autoDownload = true;
-autoUpdater.autoInstallOnAppQuit = true;
+autoUpdater.autoDownload = !isMac;
+autoUpdater.autoInstallOnAppQuit = !isMac;
 
 function sendUpdateStatus(status) {
   mainWindow?.webContents.send('update-status', status);
@@ -201,10 +203,18 @@ ipcMain.on('get-version-sync', (event) => { event.returnValue = app.getVersion()
 
 ipcMain.handle('check-update', () => {
   manualUpdateCheck = true;
-  if (app.isPackaged) {
-    autoUpdater.checkForUpdates();
-  } else {
+  if (!app.isPackaged) {
     sendUpdateStatus({ type: 'not-available', version: app.getVersion() });
+    return;
+  }
+  if (isMac) {
+    // macOS: Gatekeeper blockiert unsigned auto-install → Browser öffnen
+    sendUpdateStatus({ type: 'checking' });
+    autoUpdater.checkForUpdates().catch(() => {
+      shell.openExternal(RELEASES_URL);
+    });
+  } else {
+    autoUpdater.checkForUpdates();
   }
 });
 
@@ -227,14 +237,28 @@ autoUpdater.on('update-not-available', () => {
 
 autoUpdater.on('update-available', (info) => {
   manualUpdateCheck = false;
-  sendUpdateStatus({ type: 'available', version: info.version });
-  dialog.showMessageBox(mainWindow, {
-    type: 'info',
-    title: 'Update verfügbar',
-    message: `TC Hub v${info.version} wird heruntergeladen…`,
-    detail: 'Das Update wird im Hintergrund installiert. Sie werden benachrichtigt sobald es bereit ist.',
-    buttons: ['OK'],
-  });
+  if (isMac) {
+    // macOS: kein silent install möglich → Download-Dialog mit Browser-Link
+    sendUpdateStatus({ type: 'available-mac', version: info.version });
+    dialog.showMessageBox(mainWindow, {
+      type: 'info',
+      title: `TC Hub v${info.version} verfügbar`,
+      message: `Eine neue Version ist verfügbar.`,
+      detail: 'Jetzt herunterladen und manuell installieren (DMG in Programme ziehen).',
+      buttons: ['Jetzt herunterladen', 'Später'],
+    }).then(({ response }) => {
+      if (response === 0) shell.openExternal(RELEASES_URL);
+    });
+  } else {
+    sendUpdateStatus({ type: 'available', version: info.version });
+    dialog.showMessageBox(mainWindow, {
+      type: 'info',
+      title: 'Update verfügbar',
+      message: `TC Hub v${info.version} wird heruntergeladen…`,
+      detail: 'Das Update wird im Hintergrund installiert.',
+      buttons: ['OK'],
+    });
+  }
 });
 
 autoUpdater.on('download-progress', (progress) => {
@@ -255,6 +279,12 @@ autoUpdater.on('update-downloaded', (info) => {
 });
 
 autoUpdater.on('error', (err) => {
+  if (isMac && manualUpdateCheck) {
+    manualUpdateCheck = false;
+    sendUpdateStatus({ type: 'idle' });
+    shell.openExternal(RELEASES_URL);
+    return;
+  }
   sendUpdateStatus({ type: 'error', message: err.message });
   if (manualUpdateCheck) {
     manualUpdateCheck = false;
