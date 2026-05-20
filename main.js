@@ -1,4 +1,4 @@
-const { app, BrowserWindow, Menu, shell, dialog, nativeTheme } = require('electron');
+const { app, BrowserWindow, Menu, shell, dialog, nativeTheme, ipcMain } = require('electron');
 const { autoUpdater } = require('electron-updater');
 const path = require('path');
 
@@ -193,12 +193,25 @@ app.on('window-all-closed', () => {
 autoUpdater.autoDownload = true;
 autoUpdater.autoInstallOnAppQuit = true;
 
+function sendUpdateStatus(status) {
+  mainWindow?.webContents.send('update-status', status);
+}
+
+ipcMain.handle('check-update', () => {
+  manualUpdateCheck = true;
+  if (app.isPackaged) {
+    autoUpdater.checkForUpdates();
+  } else {
+    sendUpdateStatus({ type: 'not-available', version: app.getVersion() });
+  }
+});
+
 autoUpdater.on('checking-for-update', () => {
-  // silent
+  sendUpdateStatus({ type: 'checking' });
 });
 
 autoUpdater.on('update-not-available', () => {
-  // silent — only notify when explicitly triggered via menu
+  sendUpdateStatus({ type: 'not-available', version: app.getVersion() });
   if (manualUpdateCheck) {
     manualUpdateCheck = false;
     dialog.showMessageBox(mainWindow, {
@@ -212,6 +225,7 @@ autoUpdater.on('update-not-available', () => {
 
 autoUpdater.on('update-available', (info) => {
   manualUpdateCheck = false;
+  sendUpdateStatus({ type: 'available', version: info.version });
   dialog.showMessageBox(mainWindow, {
     type: 'info',
     title: 'Update verfügbar',
@@ -221,7 +235,12 @@ autoUpdater.on('update-available', (info) => {
   });
 });
 
-autoUpdater.on('update-downloaded', () => {
+autoUpdater.on('download-progress', (progress) => {
+  sendUpdateStatus({ type: 'downloading', percent: Math.round(progress.percent) });
+});
+
+autoUpdater.on('update-downloaded', (info) => {
+  sendUpdateStatus({ type: 'downloaded', version: info.version });
   dialog.showMessageBox(mainWindow, {
     type: 'info',
     title: 'Update bereit',
@@ -234,6 +253,7 @@ autoUpdater.on('update-downloaded', () => {
 });
 
 autoUpdater.on('error', (err) => {
+  sendUpdateStatus({ type: 'error', message: err.message });
   if (manualUpdateCheck) {
     manualUpdateCheck = false;
     dialog.showMessageBox(mainWindow, {
