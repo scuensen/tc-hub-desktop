@@ -1,7 +1,7 @@
 {
   "name": "tc-hub",
   "productName": "TC Hub",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "Honorarnotenverwaltung für Steuerberater",
   "main": "main.js",
   "scripts": {
@@ -52,6 +52,12 @@
     "nsis": {
       "oneClick": false,
       "allowToChangeInstallationDirectory": true
+    },
+    "publish": {
+      "provider": "github",
+      "owner": "scuensen",
+      "repo": "tc-hub-desktop",
+      "releaseType": "release"
     }
   },
   "devDependencies": {

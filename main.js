@@ -5,6 +5,7 @@ const path = require('path');
 const APP_URL = 'https://tc-hub-kanzlei.vercel.app';
 
 let mainWindow;
+let manualUpdateCheck = false;
 
 function createWindow() {
   mainWindow = new BrowserWindow({
@@ -140,7 +141,19 @@ function buildMenu() {
       submenu: [
         {
           label: 'Nach Updates suchen',
-          click: () => autoUpdater.checkForUpdatesAndNotify(),
+          click: () => {
+            manualUpdateCheck = true;
+            if (app.isPackaged) {
+              autoUpdater.checkForUpdates();
+            } else {
+              dialog.showMessageBox(mainWindow, {
+                type: 'info',
+                title: 'Entwicklungsmodus',
+                message: 'Update-Check nur in der gebauten App verfügbar.',
+                buttons: ['OK'],
+              });
+            }
+          },
         },
         { type: 'separator' },
         {
@@ -166,18 +179,44 @@ app.whenReady().then(() => {
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow();
   });
+
+  // Check for updates 5s after start (only in packaged app, not dev)
+  if (app.isPackaged) {
+    setTimeout(() => autoUpdater.checkForUpdates(), 5000);
+  }
 });
 
 app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') app.quit();
 });
 
-// Auto-updater events (only active in production build)
-autoUpdater.on('update-available', () => {
+autoUpdater.autoDownload = true;
+autoUpdater.autoInstallOnAppQuit = true;
+
+autoUpdater.on('checking-for-update', () => {
+  // silent
+});
+
+autoUpdater.on('update-not-available', () => {
+  // silent — only notify when explicitly triggered via menu
+  if (manualUpdateCheck) {
+    manualUpdateCheck = false;
+    dialog.showMessageBox(mainWindow, {
+      type: 'info',
+      title: 'Kein Update',
+      message: `TC Hub v${app.getVersion()} ist aktuell.`,
+      buttons: ['OK'],
+    });
+  }
+});
+
+autoUpdater.on('update-available', (info) => {
+  manualUpdateCheck = false;
   dialog.showMessageBox(mainWindow, {
     type: 'info',
     title: 'Update verfügbar',
-    message: 'Ein neues Update ist verfügbar und wird heruntergeladen.',
+    message: `TC Hub v${info.version} wird heruntergeladen…`,
+    detail: 'Das Update wird im Hintergrund installiert. Sie werden benachrichtigt sobald es bereit ist.',
     buttons: ['OK'],
   });
 });
@@ -186,9 +225,23 @@ autoUpdater.on('update-downloaded', () => {
   dialog.showMessageBox(mainWindow, {
     type: 'info',
     title: 'Update bereit',
-    message: 'Update heruntergeladen. TC Hub wird nach dem Neustart aktualisiert.',
+    message: 'Update heruntergeladen.',
+    detail: 'TC Hub wird nach dem Neustart aktualisiert.',
     buttons: ['Jetzt neu starten', 'Später'],
   }).then(({ response }) => {
     if (response === 0) autoUpdater.quitAndInstall();
   });
+});
+
+autoUpdater.on('error', (err) => {
+  if (manualUpdateCheck) {
+    manualUpdateCheck = false;
+    dialog.showMessageBox(mainWindow, {
+      type: 'warning',
+      title: 'Update-Fehler',
+      message: 'Update konnte nicht geprüft werden.',
+      detail: err.message,
+      buttons: ['OK'],
+    });
+  }
 });
