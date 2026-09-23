@@ -1,0 +1,34 @@
+# Windows-Setup bauen und an einen bestehenden Release-Entwurf hängen.
+# Lokal geht das nicht: NSIS ist ein x86-Binary, der M4 hat kein Rosetta.
+name: build-win
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Release-Tag, z. B. v1.2.1 (Entwurf muss existieren)
+        required: true
+
+permissions:
+  contents: write
+
+jobs:
+  win:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm ci
+      - run: npx electron-builder --win --publish never
+      - name: Upload
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ inputs.tag }}
+        run: |
+          cd dist
+          # latest.yml nennt die Datei mit Bindestrichen statt Leerzeichen
+          for f in *.exe *.exe.blockmap; do mv "$f" "${f// /-}"; done
+          gh release upload "$TAG" *.exe *.exe.blockmap latest.yml --clobber
