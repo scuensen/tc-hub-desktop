@@ -2,7 +2,7 @@ const { app, BrowserWindow, Menu, shell, dialog, nativeTheme, ipcMain } = requir
 const { autoUpdater } = require('electron-updater');
 const path = require('path');
 
-const APP_URL = 'https://tc-hub-kanzlei.vercel.app';
+const APP_URL = 'https://tc-hub.ai-workflow.at';
 const RELEASES_URL = 'https://github.com/scuensen/tc-hub-desktop/releases/latest';
 const isMac = process.platform === 'darwin';
 
@@ -126,7 +126,8 @@ function buildMenu() {
         {
           label: 'Entwicklertools',
           accelerator: isMac ? 'Cmd+Alt+I' : 'Ctrl+Shift+I',
-          click: () => mainWindow?.webContents.toggleDevTools(),
+          click: () => { if (!app.isPackaged) mainWindow?.webContents.toggleDevTools(); },
+          visible: !app.isPackaged,
         },
       ],
     },
@@ -285,14 +286,15 @@ autoUpdater.on('error', (err) => {
     shell.openExternal(RELEASES_URL);
     return;
   }
-  sendUpdateStatus({ type: 'error', message: err.message });
+  sendUpdateStatus({ type: 'error', message: 'Update-Fehler' });
+  console.error('[autoUpdater] error:', err.message);
   if (manualUpdateCheck) {
     manualUpdateCheck = false;
     dialog.showMessageBox(mainWindow, {
       type: 'warning',
       title: 'Update-Fehler',
       message: 'Update konnte nicht geprüft werden.',
-      detail: err.message,
+      detail: 'Bitte prüfe deine Internetverbindung und versuche es erneut.',
       buttons: ['OK'],
     });
   }
